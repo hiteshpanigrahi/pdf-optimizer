@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CoachPrint Suite - Print Optimizer & PDF Merger</title>
+
+    <!-- Auto-Scale Script for Windows 125%-150% Display Settings -->
+    <script>
+        function autoAdjustDisplayScale() {
+            // Only apply to Desktop browsers
+            if (!/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) {
+                const dpr = window.devicePixelRatio || 1;
+                // If the OS is scaling the display (e.g., 125% or 150%)
+                if (dpr >= 1.25) {
+                    // Counteract the zoom so the UI fits perfectly on screen without being microscopic
+                    document.documentElement.style.zoom = 1 / (dpr * 0.85);
+                } else {
+                    document.documentElement.style.zoom = 1;
+                }
+            }
+        }
+        window.addEventListener('resize', autoAdjustDisplayScale);
+        window.addEventListener('DOMContentLoaded', autoAdjustDisplayScale);
+        autoAdjustDisplayScale(); // Run immediately
+    </script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cat: {
+                            baseDark: '#11111b',
+                            surfaceDark: 'rgba(30, 30, 46, 0.75)',
+                            borderDark: 'rgba(69, 71, 90, 0.45)',
+                            textDark: '#cdd6f4',
+                            accent: '#cba6f7',
+                            baseLight: '#f4f1eb',
+                            surfaceLight: 'rgba(250, 247, 242, 0.85)',
+                            borderLight: 'rgba(215, 208, 198, 0.7)',
+                            textLight: '#3d3935',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Core Reactive Engine & PDF Tools -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script>
+        if (window.pdfjsLib) {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Plus Jakarta Sans', sans-serif; }
+        .mesh-bg {
+            background-image: radial-gradient(at 10% 20%, rgba(203, 166, 247, 0.12) 0px, transparent 50%),
+                              radial-gradient(at 90% 80%, rgba(137, 180, 250, 0.12) 0px, transparent 50%);
+        }
+    </style>
+</head>
+<body class="bg-cat-baseLight dark:bg-cat-baseDark text-cat-textLight dark:text-cat-textDark min-h-screen transition-colors duration-300 mesh-bg relative overflow-x-hidden">
+    <div id="app" class="max-w-[1600px] mx-auto px-4 py-8 min-h-screen flex flex-col justify-between">
+
+        <!-- Toast Notification Hub -->
+        <div class="fixed bottom-6 right-6 z-50 flex flex-col space-y-3 pointer-events-none max-w-sm w-full">
+            <div v-for="toast in toasts" :key="toast.id" :class="{
+                'bg-emerald-500/90 text-white border-emerald-400': toast.type === 'success',
+                'bg-rose-500/90 text-white border-rose-400': toast.type === 'error',
+                'bg-amber-500/90 text-white border-amber-400': toast.type === 'warning',
+                'bg-cat-surfaceLight dark:bg-cat-surfaceDark text-cat-textLight dark:text-cat-textDark border-cat-borderLight dark:border-cat-borderDark': toast.type === 'info'
+            }" class="p-4 rounded-2xl shadow-2xl backdrop-blur-xl border pointer-events-auto transition-all transform flex items-center space-x-3 text-xs font-semibold">
+                <span class="flex-shrink-0">
+                    <svg v-if="toast.type === 'success'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                    <svg v-else-if="toast.type === 'error'" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                    <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </span>
+                <span class="flex-1 leading-snug">{{ toast.message }}</span>
+            </div>
+        </div>
+
+        <!-- Header Navigation Bar -->
+        <div v-if="!(currentMode === 'optimizer' && fileLoaded)" class="flex justify-between items-center mb-8 bg-cat-surfaceLight dark:bg-cat-surfaceDark backdrop-blur-xl p-4 px-6 rounded-3xl border border-cat-borderLight dark:border-cat-borderDark shadow-xl transition-all">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-2xl bg-cat-accent/15 border border-cat-accent/30 flex items-center justify-center text-cat-accent font-bold text-sm shadow-inner">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+                </div>
+                <span class="text-sm font-bold tracking-wider uppercase opacity-85">CoachPrint Suite</span>
+            </div>
+
+            <div class="flex items-center space-x-3">
+                <button @click="currentMode = 'optimizer'" :disabled="isMerging" :class="currentMode === 'optimizer' ? 'bg-cat-accent text-cat-baseDark font-bold shadow-lg shadow-cat-accent/20' : 'hover:bg-black/5 dark:hover:bg-white/10'" class="px-5 py-2.5 text-xs rounded-2xl transition disabled:opacity-50">Print Optimizer</button>
+                <button @click="currentMode = 'merger'" :disabled="isMerging" :class="currentMode === 'merger' ? 'bg-cat-accent text-cat-baseDark font-bold shadow-lg shadow-cat-accent/20' : 'hover:bg-black/5 dark:hover:bg-white/10'" class="px-5 py-2.5 text-xs rounded-2xl transition disabled:opacity-50">Merge PDFs</button>
+
+                <button @click="toggleTheme" class="p-3 rounded-2xl bg-cat-surfaceLight dark:bg-cat-surfaceDark border border-cat-borderLight dark:border-cat-borderDark hover:opacity-80 transition text-sm shadow-md" aria-label="Toggle Light and Dark Mode">
+                    <span v-if="isDarkMode">
+                        <svg class="w-4 h-4 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                    </span>
+                    <span v-else>
+                        <svg class="w-4 h-4 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+                    </span>
+                </button>
+            </div>
+        </div>
+
+        <!-- ================= VIEW 1: PRINT OPTIMIZER ================= -->
+        <div v-if="currentMode === 'optimizer'" class="flex-1 flex flex-col justify-center">
+
+            <!-- Landing Hero Section -->
+            <div v-if="!fileLoaded && !isLoading" class="max-w-3xl mx-auto text-center py-12 px-4">
+                <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight mb-4">Optimize Lecture & Coaching PDFs for Printing</h1>
+                <p class="text-sm opacity-70 mb-12 leading-relaxed max-w-xl mx-auto">Analyze structural layouts, prune pages, and invert dark backgrounds to save toner. Rendered securely inside your browser.</p>
+
+                <!-- Upload Zone -->
+                <div @click="$refs.fileInput.click()" @dragover.prevent @drop.prevent="handleDrop" class="bg-cat-surfaceLight dark:bg-cat-surfaceDark backdrop-blur-xl border border-cat-borderLight dark:border-cat-borderDark rounded-3xl p-16 text-center cursor-pointer transition group shadow-2xl hover:border-cat-accent">
+                    <input type="file" ref="fileInput" @change="handleFileSelect" accept="application/pdf" class="hidden" aria-label="Upload PDF Document">
+                    <div class="w-20 h-20 bg-cat-accent/15 border border-cat-accent/30 text-cat-accent rounded-3xl flex items-center justify-center mx-auto mb-6 group-hover:scale-105 transition duration-300 shadow-inner">
+                        <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                    </div>
+                    <div class="text-cat-accent font-bold text-base mb-1">Click to upload coaching PDF or drag & drop</div>
+                    <p class="text-xs opacity-50">Local browser processing · Files stay on your machine</p>
+                </div>
+
+                <!-- Feature Highlights -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16 text-left">
+                    <div class="bg-cat-surfaceLight dark:bg-cat-surfaceDark backdrop-blur-md p-6 rounded-3xl border border-cat-borderLight dark:border-cat-borderDark shadow-xl">
+                        <div class="text-cat-accent mb-3">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        </div>
+                        <h3 class="font-bold text-sm mb-1">Structure Recognition</h3>
+                        <p class="text-xs opacity-60">Identifies Cover (Page 1), Summary slides, and Closing cards.</p>
+                    </div>
+                    <div class="bg-cat-surfaceLight dark:bg-cat-surfaceDark backdrop-blur-md p-6 rounded-3xl border border-cat-borderLight dark:border-cat-borderDark shadow-xl">
+                        <div class="text-cat-accent mb-3">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"/></svg>
+                        </div>
+                        <h3 class="font-bold text-sm mb-1">Toner Inversion</h3>
+                        <p class="text-xs opacity-60">Invert dense dark backgrounds to clear white to save printer toner.</p>
+                    </div>
+                    <div class="bg-cat-surfaceLight dark:bg-cat-surfaceDark backdrop-blur-md p-6 rounded-3xl border border-cat-borderLight dark:border-cat-borderDark shadow-xl">
+                        <div class="text-cat-accent mb-3">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+                        </div>
+                        <h3 class="font-bold text-sm mb-1">100% Private & Local</h3>
+                        <p class="text-xs opacity-60">Processes everything securely using your local device.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Workspace Grid -->
+            <div v-if="fileLoaded && !isLoading" class="flex-1">
+                <div class="flex flex-col lg:flex-row justify-between items-center bg-cat-surfaceLight dark:bg-cat-surfaceDark backdrop-blur-2xl p-5 px-8 rounded-3xl border border-cat-borderLight dark:border-cat-borderDark shadow-2xl mb-8 gap-4 sticky top-4 z-20">
+                    <div class="flex items-center space-x-4">
+                        <button @click="toggleTheme" class="p-3 rounded-2xl bg-black/5 dark:bg-white/5 border border-cat-borderLight dark:border-cat-borderDark hover:opacity-80 transition text-sm shadow-md" aria-label="Toggle Theme">
+                            <span v-if="isDarkMode">
+                                <svg class="w-4 h-4 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+                            </span>
+                            <span v-else>
+                                <svg class="w-4 h-4 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+                            </span>
+                        </button>
+                        <div>
+                            <h2 class="font-bold text-sm truncate max-w-sm">{{ originalFileName }}</h2>
+                            <span class="text-xs opacity-60">{{ pages.length }} of {{ initialTotalPages }} pages retained</span>
+                        </div>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button @click="invertAll" class="px-4 py-2.5 text-xs font-semibold bg-black/5 dark:bg-white/5 border border-cat-borderLight dark:border-cat-borderDark hover:bg-black/10 dark:hover:bg-white/10 transition rounded-2xl shadow-md">Invert All</button>
+                        <button @click="clearAll" class="px-4 py-2.5 text-xs font-semibold bg-black/5 dark:bg-white/5 border border-cat-borderLight dark:border-cat-borderDark hover:bg-black/10 dark:hover:bg-white/10 transition rounded-2xl shadow-md">Clear All</button>
+                        <button @click="resetEdits" class="px-4 py-2.5 text-xs font-semibold bg-black/5 dark:bg-white/5 border border-cat-borderLight dark:border-cat-borderDark hover:bg-black/10 dark:hover:bg-white/10 transition rounded-2xl shadow-md">Reset Edits</button>
+                        <button @click="triggerChangeFile" class="px-4 py-2.5 text-xs font-semibold bg-black/5 dark:bg-white/5 border border-cat-borderLight dark:border-cat-borderDark hover:bg-black/10 dark:hover:bg-white/10 transition rounded-2xl shadow-md">Change File</button>
+                        <button @click="openExportModal" class="px-6 py-2.5 text-xs font-bold bg-cat-accent text-cat-baseDark rounded-2xl hover:opacity-90 transition shadow-lg shadow-cat-accent/30">Download PDF</button>
+                    </div>
+                </div>
+
+                <!-- Page Cards Grid -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+                    <div v-for="(page, index) in pages" :key="page.originalPageNumber" :class="page.isInverted ? 'border-cat-accent ring-2 ring-cat-accent/30' : 'border-cat-borderLight dark:border-cat-borderDark'" class="bg-cat-surfaceLight dark:bg-cat-surfaceDark backdrop-blur-xl rounded-3xl border p-5 flex flex-col justify-between transition shadow-xl">
+                        <div>
+                            <div class="flex justify-between items-center mb-3">
+                                <div class="flex flex-col">
+                                    <span class="text-xs font-bold">Page {{ index + 1 }} of {{ pages.length }}</span>
+                                    <span class="text-[10px] opacity-50">Source: #{{ page.originalPageNumber }}</span>
+                                </div>
+                                <div class="flex items-center space-x-1.5">
+                                    <select :value="page.role" @change="onRoleChange(index, $event.target.value)" :aria-label="`Role for page ${index + 1}`" class="text-xs bg-cat-baseLight dark:bg-cat-baseDark border border-cat-borderLight dark:border-cat-borderDark rounded-xl px-2 py-1 font-medium focus:outline-none focus:ring-1 focus:ring-cat-accent shadow-inner">
+                                        <option value="cover">Cover</option>
+                                        <option value="body">Body</option>
+                                        <option value="summary">Summary</option>
+                                        <option value="thankyou">Closing</option>
+                                    </select>
+                                    <button @click="removePage(index)" :aria-label="`Delete page ${index + 1}`" class="p-1.5 text-rose-400 bg-black/5 dark:bg-white/5 border border-cat-borderLight dark:border-cat-borderDark hover:bg-rose-500/10 hover:text-rose-500 rounded-xl transition shadow-md" title="Remove Page">
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            <!-- Dynamic Viewport Scale Container -->
+                            <div :style="{ aspectRatio: page.aspectRatio || '4/3' }" class="bg-cat-baseLight/50 dark:bg-cat-baseDark/50 border border-cat-borderLight dark:border-cat-borderDark rounded-2xl overflow-hidden mb-3 flex items-center justify-center p-2 shadow-inner">
+                                <img :src="page.thumbnailUrl" :class="page.isInverted ? 'invert' : ''" class="object-contain max-h-full transition duration-200" alt="Slide thumbnail">
+                            </div>
+                            <p class="text-[11px] opacity-60 line-clamp-2 mb-4 italic">"{{ page.snippet }}"</p>
+                        </div>
+                        <div class="pt-3 border-t border-cat-borderLight dark:border-cat-borderDark flex items-center justify-between">
+                            <span class="text-xs font-medium">Invert Toner</span>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" v-model="page.isInverted" :aria-label="`Invert toner for page ${index + 1}`" class="w-4 h-4 accent-cat-accent rounded cursor-pointer">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= VIEW 2: MERGE PDFS ================= -->
+        <div v-if="currentMode === 'merger'" class="max-w-xl mx-auto py-12 flex-1 flex flex-col justify-center">
+            <div class="bg-cat-surfaceLight dark:bg-cat-surfaceDark backdrop-blur-2xl p-8 rounded-3xl border border-cat-borderLight dark:border-cat-borderDark shadow-2xl">
+                <h2 class="text-xl font-bold mb-2">Merge Multiple PDFs</h2>
+                <p class="text-xs opacity-70 mb-8">Combine multiple PDF modules in your selected sequence.</p>
+
+                <div @click="$refs.mergeInput.click()" class="rounded-2xl p-8 text-center bg-cat-baseLight/30 dark:bg-cat-baseDark/30 border border-cat-borderLight dark:border-cat-borderDark cursor-pointer mb-8 transition hover:border-cat-accent shadow-inner">
+                    <input type="file" ref="mergeInput" @change="handleMergeFiles" accept="application/pdf" multiple class="hidden" aria-label="Select PDF files to merge">
+                    <div class="text-cat-accent font-bold text-xs">Click to select PDF files</div>
+                    <p class="text-xs opacity-50 mt-1">Multi-file selection supported (PDF only)</p>
+                </div>
+
+                <div class="space-y-3 mb-8 max-h-60 overflow-y-auto pr-1">
+                    <div v-for="(file, idx) in mergeFiles" :key="idx" class="flex items-center justify-between p-3.5 bg-cat-baseLight/40 dark:bg-cat-baseDark/40 border border-cat-borderLight dark:border-cat-borderDark rounded-2xl text-xs shadow-md">
+                        <span class="truncate max-w-[260px] font-medium">{{ idx + 1 }}. {{ file.name }}</span>
+                        <button @click="removeMergeFile(idx)" class="text-rose-400 font-bold hover:underline" :aria-label="`Remove file ${file.name}`">Remove</button>
+                    </div>
+                </div>
+
+                <button @click="executeMerge" :disabled="mergeFiles.length < 2 || isMerging" class="w-full py-3.5 text-xs font-bold text-cat-baseDark bg-cat-accent hover:opacity-90 disabled:opacity-50 transition rounded-2xl shadow-lg shadow-cat-accent/30">
+                    {{ isMerging ? 'Merging PDF Files...' : 'Merge & Download PDF' }}
+                </button>
+            </div>
+        </div>
+
+        <!-- Centered Analysis Loading Modal -->
+        <div v-if="isLoading" class="fixed inset-0 bg-cat-baseLight/80 dark:bg-cat-baseDark/80 backdrop-blur-md z-50 flex flex-col items-center justify-center text-center p-4">
+            <div class="bg-cat-surfaceLight dark:bg-cat-surfaceDark backdrop-blur-2xl border border-cat-borderLight dark:border-cat-borderDark p-10 rounded-3xl shadow-2xl max-w-sm w-full">
+                <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-cat-accent border-t-transparent mb-5 shadow-lg"></div>
+                <p class="text-sm font-bold animate-pulse">{{ loadingMessage }}</p>
+                <p class="text-xs opacity-50 mt-2">Running browser-side layout extraction...</p>
+            </div>
+        </div>
+
+        <!-- Change File Warning Modal -->
+        <div v-if="showChangeFileModal" class="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <div class="bg-cat-surfaceLight dark:bg-cat-surfaceDark backdrop-blur-2xl border border-cat-borderLight dark:border-cat-borderDark p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center">
+                <div class="w-12 h-12 bg-amber-500/20 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                </div>
+                <h3 class="text-base font-bold mb-2">Change Active Document?</h3>
+                <p class="text-xs opacity-70 mb-6">Switching files will discard current page exclusions and role overrides.</p>
+                <div class="flex space-x-3">
+                    <button @click="showChangeFileModal = false" class="flex-1 py-3 text-xs font-semibold bg-black/5 dark:bg-white/5 border border-cat-borderLight dark:border-cat-borderDark hover:opacity-80 rounded-2xl transition shadow-md">Keep Editing</button>
+                    <button @click="proceedChangeFile" class="flex-1 py-3 text-xs font-bold bg-rose-500 text-white hover:opacity-90 rounded-2xl transition shadow-lg shadow-rose-500/30">Discard & Switch</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Export Modal -->
+        <div v-if="showExportModal" class="fixed inset-0 bg-black/60 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <div class="bg-cat-surfaceLight dark:bg-cat-surfaceDark backdrop-blur-2xl border border-cat-borderLight dark:border-cat-borderDark p-8 rounded-3xl shadow-2xl max-w-md w-full">
+                <h3 class="text-lg font-bold mb-2">Export Options</h3>
+                <p class="text-xs opacity-70 mb-4">Select your print render preset.</p>
+
+                <!-- Rasterization Alert Banner -->
+                <div class="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs mb-6 flex items-start space-x-2.5">
+                    <svg class="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span class="leading-relaxed">Inverting dark slides converts those specific pages to high-resolution JPEG images. Selectable text and hyperlinks are removed on inverted pages, while untouched pages retain native vectors.</span>
+                </div>
+
+                <div class="space-y-4 mb-6">
+                    <label class="flex items-center justify-between p-4 rounded-2xl bg-cat-baseLight/40 dark:bg-cat-baseDark/40 border border-cat-borderLight dark:border-cat-borderDark cursor-pointer transition shadow-md hover:border-cat-accent">
+                        <div class="flex items-center space-x-3">
+                            <input type="radio" v-model="exportQuality" value="standard" class="accent-cat-accent" aria-label="Standard Quality Export">
+                            <div>
+                                <div class="text-sm font-semibold">Standard Quality</div>
+                                <div class="text-xs opacity-60">Optimized JPEG (1.5x Scale, ~82% quality)</div>
+                            </div>
+                        </div>
+                        <span class="text-xs font-medium text-cat-accent bg-cat-baseLight dark:bg-cat-baseDark border border-cat-borderLight dark:border-cat-borderDark px-3 py-1.5 rounded-xl shadow-inner">~{{ calculatedStdSize }} MB</span>
+                    </label>
+
+                    <label class="flex items-center justify-between p-4 rounded-2xl bg-cat-baseLight/40 dark:bg-cat-baseDark/40 border border-cat-borderLight dark:border-cat-borderDark cursor-pointer transition shadow-md hover:border-cat-accent">
+                        <div class="flex items-center space-x-3">
+                            <input type="radio" v-model="exportQuality" value="high" class="accent-cat-accent" aria-label="High Quality Export">
+                            <div>
+                                <div class="text-sm font-semibold">High Quality</div>
+                                <div class="text-xs opacity-60">2.2x High-DPI Print Clarity</div>
+                            </div>
+                        </div>
+                        <span class="text-xs font-medium text-cat-accent bg-cat-baseLight dark:bg-cat-baseDark border border-cat-borderLight dark:border-cat-borderDark px-3 py-1.5 rounded-xl shadow-inner">~{{ calculatedHighSize }} MB</span>
+                    </label>
+                </div>
+
+                <div class="flex space-x-4">
+                    <button @click="showExportModal = false" class="flex-1 py-3 text-xs font-semibold bg-black/5 dark:bg-white/5 border border-cat-borderLight dark:border-cat-borderDark hover:opacity-80 rounded-2xl transition shadow-md">Cancel</button>
+                    <button @click="executeExport" class="flex-1 py-3 text-xs font-bold text-cat-baseDark bg-cat-accent hover:opacity-90 transition rounded-2xl shadow-lg shadow-cat-accent/30">Download PDF</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Processing State Modal -->
+        <div v-if="isProcessing" class="fixed inset-0 bg-cat-baseLight/80 dark:bg-cat-baseDark/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+            <div class="bg-cat-surfaceLight dark:bg-cat-surfaceDark backdrop-blur-2xl border border-cat-borderLight dark:border-cat-borderDark p-10 rounded-3xl shadow-2xl text-center max-w-sm w-full mx-4">
+                <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-cat-accent border-t-transparent mb-5 shadow-lg"></div>
+                <p class="font-bold text-sm">{{ processingText }}</p>
+                <p class="text-xs opacity-50 mt-2">Writing printable streams...</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const { createApp, ref, computed } = Vue;
+
+        createApp({
+            setup() {
+                const currentMode = ref('optimizer');
+                const isDarkMode = ref(true);
+                const fileLoaded = ref(false);
+                const isLoading = ref(false);
+                const loadingMessage = ref('');
+                const originalFileName = ref('');
+                const originalFileSize = ref(0);
+                const initialTotalPages = ref(0);
+
+                let pagesSnapshot = [];
+                const pages = ref([]);
+                let rawArrayBuffer = null;
+                let pdfDocObj = null;
+
+                const showExportModal = ref(false);
+                const showChangeFileModal = ref(false);
+                const exportQuality = ref('standard');
+                const isProcessing = ref(false);
+                const processingText = ref('');
+
+                const mergeFiles = ref([]);
+                const isMerging = ref(false);
+
+                // Toast Engine
+                const toasts = ref([]);
+                const showToast = (message, type = 'info') => {
+                    const id = Date.now() + Math.random();
+                    toasts.value.push({ id, message, type });
+                    setTimeout(() => {
+                        toasts.value = toasts.value.filter(t => t.id !== id);
+                    }, 4000);
+                };
+
+                const toggleTheme = () => {
+                    isDarkMode.value = !isDarkMode.value;
+                    if (isDarkMode.value) {
+                        document.documentElement.classList.add('dark');
+                    } else {
+                        document.documentElement.classList.remove('dark');
+                    }
+                };
+
+                const handleFileSelect = (e) => {
+                    if (e.target.files.length) processFile(e.target.files[0]);
+                };
+
+                const handleDrop = (e) => {
+                    if (e.dataTransfer.files.length) processFile(e.dataTransfer.files[0]);
+                };
+
+                const processFile = async (file) => {
+                    if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                        showToast('Please select a valid PDF file.', 'error');
+                        return;
+                    }
+                    originalFileName.value = file.name;
+                    originalFileSize.value = file.size;
+                    isLoading.value = true;
+                    fileLoaded.value = true;
+
+                    try {
+                        rawArrayBuffer = await file.arrayBuffer();
+                        const loadingTask = pdfjsLib.getDocument({ data: rawArrayBuffer.slice(0) });
+                        pdfDocObj = await loadingTask.promise;
+                        const numPages = pdfDocObj.numPages;
+                        initialTotalPages.value = numPages;
+
+                        const extracted = [];
+                        for (let i = 1; i <= numPages; i++) {
+                            loadingMessage.value = `Extracting structure: Page ${i} of ${numPages}...`;
+                            const page = await pdfDocObj.getPage(i);
+                            const textContent = await page.getTextContent();
+                            const snippet = textContent.items.map(item => item.str).join(' ').toLowerCase();
+
+                            const viewport = page.getViewport({ scale: 1.0 });
+                            const aspectRatio = `${viewport.width} / ${viewport.height}`;
+
+                            const thumbViewport = page.getViewport({ scale: 0.25 });
+                            const canvas = document.createElement('canvas');
+                            const ctx = canvas.getContext('2d');
+                            canvas.width = thumbViewport.width;
+                            canvas.height = thumbViewport.height;
+                            await page.render({ canvasContext: ctx, viewport: thumbViewport }).promise;
+
+                            // Explicit Heuristics: Covers, Summaries, Closings
+                            let role = 'body';
+                            if (i === 1) {
+                                role = 'cover';
+                            } else if (
+                                snippet.includes('summary') ||
+                                snippet.includes('key takeaways') ||
+                                snippet.includes('conclusion') ||
+                                snippet.includes('mins summary') ||
+                                snippet.includes('takeaway')
+                            ) {
+                                role = 'summary';
+                            } else if (
+                                (i >= numPages - 1 && (snippet.includes('thank you') || snippet.includes('thanks') || snippet.includes('connect'))) ||
+                                i === numPages
+                            ) {
+                                role = 'thankyou';
+                            }
+
+                            // Summaries and closings default to toner inversion (dark slides); covers & body remain un-inverted initially
+                            const isInverted = (role === 'summary' || role === 'thankyou');
+
+                            extracted.push({
+                                originalPageNumber: i,
+                                role: role,
+                                isInverted: isInverted,
+                                thumbnailUrl: canvas.toDataURL(),
+                                aspectRatio: aspectRatio,
+                                snippet: snippet.trim() ? snippet.slice(0, 80) + '...' : 'Slide image (No text detected)'
+                            });
+                        }
+                        pages.value = JSON.parse(JSON.stringify(extracted));
+                        pagesSnapshot = JSON.parse(JSON.stringify(extracted));
+                        showToast(`Successfully analyzed ${numPages} pages.`, 'success');
+                    } catch (err) {
+                        console.error(err);
+                        showToast('Failed to parse PDF document.', 'error');
+                        fileLoaded.value = false;
+                    } finally {
+                        isLoading.value = false;
+                    }
+                };
+
+                const onRoleChange = (index, newRole) => {
+                    const p = pages.value[index];
+                    p.role = newRole;
+                    // Auto-enable toner inversion for summary/closing, disable for body/cover
+                    if (newRole === 'summary' || newRole === 'thankyou') {
+                        p.isInverted = true;
+                    } else if (newRole === 'body' || newRole === 'cover') {
+                        p.isInverted = false;
+                    }
+                };
+
+                const triggerChangeFile = () => {
+                    showChangeFileModal.value = true;
+                };
+
+                const proceedChangeFile = () => {
+                    showChangeFileModal.value = false;
+                    fileLoaded.value = false;
+                    pages.value = [];
+                    pagesSnapshot = [];
+                    rawArrayBuffer = null;
+                    pdfDocObj = null;
+                    // Reset input so same file can be chosen again
+                    const fi = document.querySelector('input[type="file"]');
+                    if (fi) fi.value = '';
+                };
+
+                const resetEdits = () => {
+                    pages.value = JSON.parse(JSON.stringify(pagesSnapshot));
+                    showToast('Document state reverted to initial scan.', 'info');
+                };
+
+                const invertAll = () => {
+                    pages.value.forEach(p => p.isInverted = true);
+                    showToast('All pages set to toner inversion.', 'info');
+                };
+
+                const clearAll = () => {
+                    pages.value.forEach(p => p.isInverted = false);
+                    showToast('Cleared all inversion overrides.', 'info');
+                };
+
+                const removePage = (index) => {
+                    const removed = pages.value.splice(index, 1);
+                    showToast(`Removed Page ${index + 1} (Source #${removed[0].originalPageNumber}).`, 'info');
+                };
+
+                const calculatedStdSize = computed(() => {
+                    const totalOrig = initialTotalPages.value || 1;
+                    const activeCount = pages.value.length;
+                    const baseRatio = originalFileSize.value / (1024 * 1024);
+                    const retainedRatio = baseRatio * (activeCount / totalOrig);
+                    const invertedCount = pages.value.filter(p => p.isInverted).length;
+                    return Math.max(0.2, retainedRatio + (invertedCount * 0.11)).toFixed(1);
+                });
+
+                const calculatedHighSize = computed(() => {
+                    const totalOrig = initialTotalPages.value || 1;
+                    const activeCount = pages.value.length;
+                    const baseRatio = originalFileSize.value / (1024 * 1024);
+                    const retainedRatio = baseRatio * (activeCount / totalOrig);
+                    const invertedCount = pages.value.filter(p => p.isInverted).length;
+                    return Math.max(0.4, retainedRatio + (invertedCount * 0.32)).toFixed(1);
+                });
+
+                const openExportModal = () => {
+                    if (pages.value.length === 0) {
+                        showToast('No active pages remaining to export.', 'warning');
+                        return;
+                    }
+                    showExportModal.value = true;
+                };
+
+                const executeExport = async () => {
+                    showExportModal.value = false;
+                    isProcessing.value = true;
+                    processingText.value = 'Preparing print-optimized document...';
+
+                    const scale = exportQuality.value === 'high' ? 2.2 : 1.5;
+                    const quality = exportQuality.value === 'high' ? 0.92 : 0.80;
+
+                    try {
+                        const loadingTask = pdfjsLib.getDocument({ data: rawArrayBuffer.slice(0) });
+                        const pdfDoc = await loadingTask.promise;
+                        const newPdfDoc = await PDFLib.PDFDocument.create();
+                        const originalLibDoc = await PDFLib.PDFDocument.load(rawArrayBuffer);
+
+                        for (let i = 0; i < pages.value.length; i++) {
+                            const p = pages.value[i];
+                            processingText.value = `Exporting page ${i + 1} of ${pages.value.length}...`;
+                            const page = await pdfDoc.getPage(p.originalPageNumber);
+
+                            if (p.isInverted) {
+                                const viewport = page.getViewport({ scale: scale });
+                                const canvas = document.createElement('canvas');
+                                const ctx = canvas.getContext('2d');
+                                canvas.width = viewport.width;
+                                canvas.height = viewport.height;
+                                await page.render({ canvasContext: ctx, viewport }).promise;
+
+                                const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                                const data = imgData.data;
+                                for (let j = 0; j < data.length; j += 4) {
+                                    data[j] = 255 - data[j];
+                                    data[j + 1] = 255 - data[j + 1];
+                                    data[j + 2] = 255 - data[j + 2];
+                                }
+                                ctx.putImageData(imgData, 0, 0);
+
+                                const bytes = canvas.toDataURL('image/jpeg', quality);
+                                const embedded = await newPdfDoc.embedJpg(bytes);
+                                const newPage = newPdfDoc.addPage([viewport.width / scale, viewport.height / scale]);
+                                newPage.drawImage(embedded, { x: 0, y: 0, width: newPage.getWidth(), height: newPage.getHeight() });
+                            } else {
+                                const [copied] = await newPdfDoc.copyPages(originalLibDoc, [p.originalPageNumber - 1]);
+                                newPdfDoc.addPage(copied);
+                            }
+                        }
+
+                        const pdfBytes = await newPdfDoc.save();
+                        const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = `print-optimized-${originalFileName.value}`;
+                        link.click();
+                        showToast('Document downloaded successfully!', 'success');
+                    } catch (err) {
+                        console.error(err);
+                        showToast('Export failed during PDF compilation.', 'error');
+                    } finally {
+                        isProcessing.value = false;
+                    }
+                };
+
+                const handleMergeFiles = (e) => {
+                    const rejectedFiles = [];
+                    for (let f of e.target.files) {
+                        if (f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')) {
+                            mergeFiles.value.push(f);
+                        } else {
+                            rejectedFiles.push(f.name);
+                        }
+                    }
+                    if (rejectedFiles.length > 0) {
+                        showToast(`Skipped ${rejectedFiles.length} non-PDF file(s).`, 'warning');
+                    }
+                    e.target.value = '';
+                };
+
+                const removeMergeFile = (idx) => {
+                    const removed = mergeFiles.value.splice(idx, 1);
+                    showToast(`Removed ${removed[0].name}.`, 'info');
+                };
+
+                const executeMerge = async () => {
+                    isMerging.value = true;
+                    isProcessing.value = true;
+                    processingText.value = `Merging ${mergeFiles.value.length} documents...`;
+                    try {
+                        const mergedPdf = await PDFLib.PDFDocument.create();
+                        for (let file of mergeFiles.value) {
+                            const buf = await file.arrayBuffer();
+                            const doc = await PDFLib.PDFDocument.load(buf);
+                            const copiedPages = await mergedPdf.copyPages(doc, doc.getPageIndices());
+                            copiedPages.forEach(p => mergedPdf.addPage(p));
+                        }
+                        const bytes = await mergedPdf.save();
+                        const blob = new Blob([bytes], { type: 'application/pdf' });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = `merged-coaching-document.pdf`;
+                        link.click();
+                        showToast('PDFs merged and downloaded successfully!', 'success');
+                    } catch (err) {
+                        console.error(err);
+                        showToast('Merge operation failed.', 'error');
+                    } finally {
+                        isProcessing.value = false;
+                        isMerging.value = false;
+                    }
+                };
+
+                return {
+                    currentMode, isDarkMode, fileLoaded, isLoading, loadingMessage,
+                    originalFileName, pages, initialTotalPages, showExportModal,
+                    showChangeFileModal, exportQuality, calculatedStdSize, calculatedHighSize,
+                    isProcessing, processingText, mergeFiles, isMerging, toasts,
+                    toggleTheme, handleFileSelect, handleDrop, onRoleChange, triggerChangeFile,
+                    proceedChangeFile, resetEdits, invertAll, clearAll, removePage,
+                    openExportModal, executeExport, handleMergeFiles, removeMergeFile, executeMerge
+                };
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
